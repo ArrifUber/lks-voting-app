@@ -83,11 +83,11 @@ jobs:
 
       -  name: Fill in the new image ID in the Amazon ECS task definition (Worker)
          id: task-def-worker
+         uses: aws-actions/amazon-ecs-render-task-definition@v1
          env:
            ECR_REPOSITORY: lks-voting-image
            ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
            IMAGE_TAG: worker-prod-latest
-         uses: aws-actions/amazon-ecs-render-task-definition@v1
          with:
            task-definition: ${{ env.WORKER_TASK_DEFINITION }}
            container-name: ${{ env.WORKER_CONTAINER_NAME }}
@@ -95,11 +95,11 @@ jobs:
            
       -  name: Fill in the new image ID in the Amazon ECS task definition (Vote)
          id: task-def-vote
+         uses: aws-actions/amazon-ecs-render-task-definition@v1
          env:
            ECR_REPOSITORY: lks-voting-image
            ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
            IMAGE_TAG: vote-prod-latest
-         uses: aws-actions/amazon-ecs-render-task-definition@v1
          with:
            task-definition: ${{ env.VOTE_TASK_DEFINITION }}
            container-name: ${{ env.VOTE_CONTAINER_NAME }}
@@ -107,11 +107,11 @@ jobs:
            
       -  name: Fill in the new image ID in the Amazon ECS task definition (Result)
          id: task-def-result
+         uses: aws-actions/amazon-ecs-render-task-definition@v1
          env:
            ECR_REPOSITORY: lks-voting-image
            ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
            IMAGE_TAG: result-prod-latest
-         uses: aws-actions/amazon-ecs-render-task-definition@v1
          with:
            task-definition: ${{ env.RESULT_TASK_DEFINITION }}
            container-name: ${{ env.RESULT_CONTAINER_NAME }}
