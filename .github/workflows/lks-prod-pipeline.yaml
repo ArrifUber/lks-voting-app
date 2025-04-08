@@ -1,0 +1,148 @@
+name: prod pipeline
+
+on:
+  push:
+    branches:
+      -  prod
+
+env:
+  AWS_REGION: us-east-1                 
+  ECR_REPOSITORY: lks-voting-image
+  ECS_SERVICE_WORKER: lks-worker-service        
+  ECS_SERVICE_VOTE: lks-vote-service        
+  ECS_SERVICE_RESULT: lks-result-service        
+  ECS_CLUSTER: lks-voting-cluster
+  WORKER_TASK_DEFINITION: worker/task-definition.json
+  VOTE_TASK_DEFINITION: vote/task-definition.json
+  RESULT_TASK_DEFINITION: result/task-definition.json
+  WORKER_CONTAINER_NAME: lks-worker-container
+  VOTE_CONTAINER_NAME: lks-vote-container
+  RESULT_CONTAINER_NAME: lks-result-container
+
+jobs:
+  build:
+    name: Build Image Productions
+    runs-on: ubuntu-latest
+    steps:
+      -  name: update docker version
+         run: |
+            docker --version
+
+      -  name: Checkout
+         uses: actions/checkout@v3
+      
+      -  name: Configure AWS Credentials
+         uses: aws-actions/configure-aws-credentials@v1
+         with:
+           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+           aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
+           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+           aws-region: ${{ env.AWS_REGION }}
+
+      -  name: Login to Amazon ECR
+         id: login-ecr
+         uses: aws-actions/amazon-ecr-login@v1
+
+      -  name: build and push image into ECR
+         id: build-image
+         env:
+           ECR_REPOSITORY: lks-voting-image
+           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+           WORKER_IMAGE_TAG: worker-prod-latest
+           VOTE_IMAGE_TAG: vote-prod-latest
+           RESULT_IMAGE_TAG: result-prod-latest
+         run: |
+           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$WORKER_IMAGE_TAG --build-arg copy_or_mount="copy" ./worker
+           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$WORKER_IMAGE_TAG
+           
+           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$VOTE_IMAGE_TAG --build-arg copy_or_mount="copy" ./vote
+           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$VOTE_IMAGE_TAG
+           
+           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$RESULT_IMAGE_TAG --build-arg copy_or_mount="copy" ./result
+           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$RESULT_IMAGE_TAG
+
+  deploy:
+    name: Deploy Applications to ECS
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      -  name: Checkout
+         uses: actions/checkout@v3
+
+      -  name: Configure AWS Credentials
+         uses: aws-actions/configure-aws-credentials@v1
+         with:
+           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+           aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
+           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+           aws-region: ${{ env.AWS_REGION }}
+
+      -  name: Login to Amazon ECR
+         id: login-ecr
+         uses: aws-actions/amazon-ecr-login@v1
+
+      -  name: Fill in the new image ID in the Amazon ECS task definition (Worker)
+         id: task-def-worker
+         env:
+           ECR_REPOSITORY: lks-voting-image
+           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+           IMAGE_TAG: worker-prod-latest
+         uses: aws-actions/amazon-ecs-render-task-definition@v1
+         with:
+           task-definition: ${{ env.WORKER_TASK_DEFINITION }}
+           container-name: ${{ env.WORKER_CONTAINER_NAME }}
+           image: $ECR_REGISTRY/$ECR_REPOSITORY:IMAGE_TAG
+           
+      -  name: Fill in the new image ID in the Amazon ECS task definition (Vote)
+         id: task-def-vote
+         env:
+           ECR_REPOSITORY: lks-voting-image
+           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+           IMAGE_TAG: vote-prod-latest
+         uses: aws-actions/amazon-ecs-render-task-definition@v1
+         with:
+           task-definition: ${{ env.VOTE_TASK_DEFINITION }}
+           container-name: ${{ env.VOTE_CONTAINER_NAME }}
+           image: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+           
+      -  name: Fill in the new image ID in the Amazon ECS task definition (Result)
+         id: task-def-result
+         env:
+           ECR_REPOSITORY: lks-voting-image
+           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+           IMAGE_TAG: result-prod-latest
+         uses: aws-actions/amazon-ecs-render-task-definition@v1
+         with:
+           task-definition: ${{ env.RESULT_TASK_DEFINITION }}
+           container-name: ${{ env.RESULT_CONTAINER_NAME }}
+           image: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+      -  name: Deploy Amazon ECS task definition Worker
+         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+         with:
+            task-definition: ${{ steps.task-def-worker.outputs.task-definition }}
+            service: ${{ env.ECS_SERVICE_WORKER }}
+            cluster: ${{ env.ECS_CLUSTER }}
+            wait-for-service-stability: true
+            
+      -  name: Deploy Amazon ECS task definition Vote
+         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+         with:
+            task-definition: ${{ steps.task-def-vote.outputs.task-definition }}
+            service: ${{ env.ECS_SERVICE_VOTE }}
+            cluster: ${{ env.ECS_CLUSTER }}
+            wait-for-service-stability: true
+            
+      -  name: Deploy Amazon ECS task definition Result
+         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+         with:
+            task-definition: ${{ steps.task-def-result.outputs.task-definition }}
+            service: ${{ env.ECS_SERVICE_RESULT }}
+            cluster: ${{ env.ECS_CLUSTER }}
+            wait-for-service-stability: true
+
+      -  name: send notification
+         env:
+          TOPIC_ARN: ${{ secrets.AWS_SNS_ARN }}
+         run: aws sns publish --topic-arn $TOPIC_ARN --subject "Hello, from Bali" --message "New version The Voting App from Bali is Released !!"
+             
