@@ -35,7 +35,7 @@ jobs:
       -  name: build and push image into ECR
          id: build-image
          env:
-           ECR_REPOSITORY: lks-voting-app
+           ECR_REPOSITORY: lks-voting-image
            ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
            WORKER_IMAGE_TAG: worker-dev-latest
            VOTE_IMAGE_TAG: vote-dev-latest
